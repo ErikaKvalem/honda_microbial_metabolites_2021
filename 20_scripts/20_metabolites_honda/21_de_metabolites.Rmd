@@ -1,0 +1,633 @@
+---
+title: Reanalysis of Metabolomics data from Tanoue et al. 
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r, include=FALSE}
+source("helper_functions.R")
+```
+
+```{r, include=FALSE}
+# GF, 11, 7, 4-mix; cecal content; 4 weeks
+exp1 = read_excel("../../tables/honda_metabolomics/compiled_11vs7vs4rawdata_matlab_cecal(Exp.1).xlsx")
+
+# GF, 11, 10 mix; cecal content and serum; 1 week
+exp2_cecal = read_excel("../../tables/honda_metabolomics/compiled_11vs10cecal_1w(Exp.2).xlsx")
+exp2_serum = read_excel("../../tables/honda_metabolomics/compiled_11vs10serum_1w(Exp.2).xlsx")
+
+# GF, 11, 10-mix; cecal content and serum; 4 weeks
+exp3_cecal = read_excel("../../tables/honda_metabolomics/compiled_11vs10cecal_4w(Exp.3).xlsx")
+exp3_serum = read_excel("../../tables/honda_metabolomics/compiled_11vs10serum_4w(Exp.3).xlsx")
+
+# GF vs. 11-mix; anion/cation separately; serum; 1 week
+exp4_anion = read_excel("../../tables/honda_metabolomics/compiled_GFvs11serum_3_anion+cation(Exp.4).xlsx")
+exp4_cation = read_excel("../../tables/honda_metabolomics/compiled_GFvs11serum_3_anion+cation(Exp.4).xlsx", sheet=2)
+
+# GF vs. 11-mix; serum; 1 week; (it says timecourse experiment, but I don't see time data...)
+exp5 = read_excel("../../tables/honda_metabolomics/compiled_GFvs11serum_timecourse exp(Exp.5).xlsx")
+
+exp1 = exp1 %>% 
+  rename(metabolite = `...1`) %>% 
+  pivot_longer(cols=-metabolite, names_to="sample") %>% 
+  mutate(source="cecal", time="4 weeks", experiment="exp1")
+
+exp2 = bind_rows(
+  exp2_cecal %>% rename(metabolite = `...1`) %>% 
+    pivot_longer(cols=-metabolite, names_to="sample") %>% 
+    mutate(source="cecal"),
+  exp2_serum %>% rename(metabolite = `...1`) %>% 
+    pivot_longer(cols=-metabolite, names_to="sample") %>% 
+    mutate(source="serum")
+) %>% filter(!str_starts(sample, "\\.\\.\\.")) %>%
+  mutate(time ="1 week", experiment="exp2")
+
+exp3 = bind_rows(
+  exp3_cecal %>% rename(metabolite = `...1`) %>% 
+    pivot_longer(cols=-metabolite, names_to="sample") %>% 
+    mutate(source="cecal"),
+  exp3_serum %>% rename(metabolite = `...1`) %>% 
+    pivot_longer(cols=-metabolite, names_to="sample") %>% 
+    mutate(source="serum")
+) %>% filter(!str_starts(sample, "\\.\\.\\.")) %>%
+  mutate(time ="4 weeks", experiment="exp3")
+
+exp4 = bind_rows(
+  exp4_anion %>% rename(metabolite = `...1`) %>% 
+    pivot_longer(cols=-metabolite, names_to="sample") %>% 
+    filter(!str_detect(sample, "no data")) %>%
+    mutate(experiment="exp4_anion"),  
+  exp4_cation %>% rename(metabolite = `...1`) %>% 
+    pivot_longer(cols=-metabolite, names_to="sample") %>% 
+    filter(!str_detect(sample, "no data")) %>%
+    mutate(experiment="exp4_cation")
+) %>% mutate(source="serum", time ="1 week")
+
+exp5 = exp5 %>% rename(metabolite = `...1`) %>% 
+  pivot_longer(cols=-metabolite, names_to="sample") %>% 
+  filter(sample != "blank") %>%
+  mutate(source="serum", time="1 week", experiment="exp5")
+
+all_data = bind_rows(exp1, exp2, exp3, exp4, exp5) %>% 
+  mutate(group = detect_group(sample)) %>% 
+  mutate(sample = paste0(experiment, "_",sample)) %>%
+  # there are a few (3) metabolites with non-unique value. 
+  # for our use-case, I deem it safe to aggregate them by max. 
+  group_by(sample, metabolite, group, source, time, experiment) %>%
+  summarise(value = max(value)) %>% 
+  ungroup() %>%
+  mutate(value_log = log10(value))
+
+all_data %>% write_tsv("../../data/21_de_metabolites/metabolomics_all_data_tidy.tsv")
+```
+
+## About the experiments
+ * Experiment 1: 
+    - GF, 4, 7, 11-mix 
+    - 4 weeks
+    - Cecal contents
+ * Experiment 2:
+    - GF, 10, 11-mix
+    - 1 week
+    - Cecal contents + serum
+ * Experiment 3:
+    - GF, 10, 11-mix
+    - 4 weeks
+    - Cecal contents + serum
+ * Experiment 4:
+    - GF, 11-mix
+    - 1 week
+    - Serum
+ * Experiment 5:
+    - GF, 11-mix
+    - 1 week
+    - Serum
+
+## About the data
+ * What's the units? 
+    - area under the curve
+ * How is the data normalized / do I need to normalize it? 
+    - It needs to be normalized by internal standards to receive mmol/l
+    - Takeshi is looking for the internal standards concentrations. 
+ * Experiments 4 and 5 have been measured on a different platform with higher sensitivity.  
+
+## Question1: 10-strains vs. 11 strains in cecum
+
+### Filtering and quality control
+ * only compare 10-mix and 11-mix in cecum
+ * only include metabolites that are not zero in four samples (which is half of one group)
+ * Log-transformed the data is reasonably normally distributed (when excluding NAs). 
+ * There is no big difference between experimental groups. Since the linear model used
+   for testing already takes those differences into accoung, we don't further correct 
+   for batches (no normalization). 
+ * We use log1p for the test. The data is not perfectly normally distributed any more, 
+   but it is more appropriate than excluding the most promising metabolites that 
+   have not been detected in one of the groups.
+   
+   
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data1 = all_data %>% filter(experiment %in% c("exp2", "exp3"), source=="cecal", group %in% c("11-mix", "10-mix"))
+
+# 4 = at least half in each group
+metabolites_filtered = data1 %>% group_by(metabolite) %>% summarise(n_measured = sum(value > 0)) %>% filter(n_measured>=4)
+
+data1_filtered = data1 %>% 
+  inner_join(metabolites_filtered) %>% 
+  mutate(value_log1p = log1p(value))
+
+data1_filtered %>% 
+  ggplot(aes(x=sample, y=value_log1p, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log1p")
+
+data1_filtered %>% 
+  ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+### statistical test using linear model
+
+ * A Bayesian linear model, comparing the model ` ~ experiment + group` against `~ experiment` only. 
+ * For interpretation of (log) bayes factors, see, for instance [here](https://docs.scvi-tools.org/en/stable/user_guide/notebooks/scVI_DE_worm.html#Interpreting-Bayes-factors).
+ * The heatmap only shows metabolites which are **upregulated** in the 11-mix. 
+ 
+```{r, include=FALSE}
+bayes_test = function(df, group) {
+  df = as.data.frame(df)
+  bf = generalTestBF(value_log1p ~ group + experiment, data=df, neverExclude = "experiment", progress=FALSE)
+  data.frame(
+    bayes_factor = (bf[1] / bf[2]) %>% as.vector(),
+    log2_fc = log2(mean(df$value[df$group == "11-mix"], na.rm=FALSE) /mean(df$value[df$group == "10-mix"], na.rm=FALSE))
+  )
+}
+
+data1_res = data1_filtered %>% 
+  group_by(metabolite) %>% 
+  group_modify(bayes_test) %>%
+  ungroup() %>% 
+  mutate(log_bf = log(bayes_factor)) %>% 
+  arrange(-bayes_factor) 
+
+data1_res %>% 
+  write_tsv("../../data/21_de_metabolites/q1_11mix_vs_10mix_caecum.tsv")
+
+```
+
+
+
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE}
+selected_metabolites1 = data1_res %>%
+  filter(bayes_factor > 10, log2_fc > 0) %>%
+  mutate(bayes_cat = categorize_bayes_factor(bayes_factor))
+
+heatmap_data = all_data %>%
+  filter(experiment %in% c("exp2", "exp3"), source == "cecal") %>% 
+  inner_join(selected_metabolites1) %>%
+  arrange(-bayes_factor) %>% 
+  mutate(value_log = ifelse(is.infinite(value_log), NA, value_log)) %>%
+  group_by(metabolite) %>% 
+  mutate(value_scaled = scale(value_log)[,1])
+
+heatmap_data %>% 
+  group_by(bayes_cat) %>% 
+  heatmap(metabolite, sample, value_scaled, 
+          cluster_rows=FALSE,
+          palette_value = circlize::colorRamp2(c(-2, 0, 2), brewer.pal(n=5, name="RdBu")[c(5,3,1)]),
+          palette_grouping = list(brewer.pal(n=5, name="YlOrBr")[5:3]),
+          row_names_gp = grid::gpar(fontsize = 8),
+          column_names_gp = grid::gpar(fontsize=10)
+) %>%
+  add_tile(group, palette =brewer.pal(n=3, name="Set1")[1:2]) %>% 
+  add_tile(experiment, palette=brewer.pal(n=3, name="Dark2"))
+  
+```
+
+
+## Question2: 11 strains vs. control in cecum.  
+
+### Filtering and quality control
+ * only compare 11-mix and GF in cecum
+ * only include metabolites that are not zero in four samples (which is half of one group)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data2 = all_data %>% filter(source=="cecal", group %in% c("11-mix", "GF"))
+
+# 4 = at least half in each group
+metabolites_filtered = data2 %>% group_by(metabolite) %>% summarise(n_measured = sum(value > 0)) %>% filter(n_measured>=3)
+
+data2_filtered = data2 %>% 
+  inner_join(metabolites_filtered) %>% 
+  mutate(value_log1p = log1p(value))
+
+data2_filtered %>% 
+  ggplot(aes(x=sample, y=value_log1p, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log1p")
+
+data2_filtered %>% 
+  ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+### statistical test using linear model
+
+ * A Bayesian linear model, comparing the model ` ~ experiment + group` against `~ experiment` only. 
+ * The heatmap only shows metabolites which are **upregulated** in the 11-mix. 
+ 
+```{r, include=FALSE}
+bayes_test = function(df, group) {
+  df = as.data.frame(df)
+  bf = generalTestBF(value_log1p ~ group + experiment, data=df, neverExclude = "experiment", progress=FALSE)
+  data.frame(
+    bayes_factor = (bf[1] / bf[2]) %>% as.vector(),
+    log2_fc = log2(mean(df$value[df$group == "11-mix"], na.rm=FALSE) /mean(df$value[df$group == "GF"], na.rm=FALSE))
+  )
+}
+
+data2_res = data2_filtered %>% 
+  group_by(metabolite) %>% 
+  group_modify(bayes_test) %>%
+  ungroup() %>% 
+  mutate(log_bf = log(bayes_factor)) %>% 
+  arrange(-bayes_factor) 
+
+data2_res %>% 
+  write_tsv("../../data/21_de_metabolites/q2_11mix_vs_gf_caecum.tsv")
+
+```
+
+```{r, fig.width=10, fig.height=12, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+selected_metabolites2 = data2_res %>%
+  filter(bayes_factor > 10, log2_fc > 0) %>%
+  mutate(bayes_cat = categorize_bayes_factor(bayes_factor))
+
+heatmap_data = data2 %>% inner_join(selected_metabolites2) %>%
+  arrange(-bayes_factor) %>% 
+  mutate(value_log = ifelse(is.infinite(value_log), NA, value_log)) %>%
+  group_by(metabolite) %>% 
+  mutate(value_scaled = scale(value_log)[,1]) 
+
+gpar(fontsize=10)
+heatmap_data %>% 
+  group_by(bayes_cat) %>% 
+  heatmap(metabolite, sample, value_scaled, 
+          cluster_rows=FALSE,
+          palette_value = circlize::colorRamp2(c(-2, 0, 2), brewer.pal(n=5, name="RdBu")[c(5,3,1)]),
+          palette_grouping = list(brewer.pal(n=5, name="YlOrBr")[5:3]),
+          row_names_gp = grid::gpar(fontsize = 8),
+) %>%
+  add_tile(group, palette =brewer.pal(n=3, name="Set1")[1:2]) %>% 
+  add_tile(experiment, palette=brewer.pal(n=3, name="Dark2"))
+  
+```
+
+
+## Questions 3: Metabolites that are enriched between 11-mix and 10mix AND between 11-mix and GF
+
+* Metabolites with a Bayes Factor >10 ("strong evidence") in Question 2 and Question 3. 
+* The heatmap only shows metabolites which are **upregulated** in the 11-mix. 
+
+```{r, fig.width=8, fig.height=6, echo=FALSE, message=FALSE, warning=FALSE}
+selected_metabolites3 = inner_join(selected_metabolites1, selected_metabolites2 %>% select(metabolite))
+
+heatmap_data = all_data %>%
+  filter(experiment %in% c("exp2", "exp3"), source == "cecal") %>% 
+  inner_join(selected_metabolites3) %>%
+  arrange(-bayes_factor) %>% 
+  mutate(value_log = ifelse(is.infinite(value_log), NA, value_log)) %>%
+  group_by(metabolite) %>% 
+  mutate(value_scaled = scale(value_log)[,1]) %>% 
+  mutate(metabolite = str_trunc(metabolite, 35, "center"))
+
+heatmap_data %>% 
+  ungroup() %>% 
+  # group_by(bayes_cat) %>% 
+  heatmap(metabolite, sample, value_scaled, 
+          cluster_rows=FALSE,
+          palette_value = circlize::colorRamp2(c(-2, 0, 2), brewer.pal(n=5, name="RdBu")[c(5,3,1)]),
+          palette_grouping = list(brewer.pal(n=5, name="YlOrBr")[5:3]),
+          row_names_gp = grid::gpar(fontsize = 8),
+          column_names_gp = grid::gpar(fontsize=10),
+) %>%
+  add_tile(group, palette =brewer.pal(n=3, name="Set1")[1:2]) %>% 
+  add_tile(experiment, palette=brewer.pal(n=3, name="Dark2"))
+```
+
+## Question4: 10-strains vs. 11 strains in serum 
+
+### Filtering and quality control
+ * only compare 10-mix and 11-mix in serum 
+ * only include metabolites that are not zero in four samples (which is half of one group)
+ * Log-transformed the data is reasonably normally distributed (when excluding NAs). 
+ * There is no big difference between experimental groups. Since the linear model used
+   for testing already takes those differences into accoung, we don't further correct 
+   for batches (no normalization). 
+ * We use log1p for the test. The data is not perfectly normally distributed any more, 
+   but it is more appropriate than excluding the most promising metabolites that 
+   have not been detected in one of the groups.
+   
+   
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data4 = all_data %>% filter(experiment %in% c("exp2", "exp3"), source=="serum", group %in% c("11-mix", "10-mix"))
+
+# 4 = at least half in each group
+metabolites_filtered = data4 %>% group_by(metabolite) %>% summarise(n_measured = sum(value > 0)) %>% filter(n_measured>=4)
+
+data4_filtered = data4 %>% 
+  inner_join(metabolites_filtered) %>% 
+  mutate(value_log1p = log1p(value))
+
+data4_filtered %>% 
+  ggplot(aes(x=sample, y=value_log1p, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log1p")
+
+data4_filtered %>% 
+  ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+### statistical test using linear model
+
+ * A Bayesian linear model, comparing the model ` ~ experiment + group` against `~ experiment` only. 
+ * For interpretation of (log) bayes factors, see, for instance [here](https://docs.scvi-tools.org/en/stable/user_guide/notebooks/scVI_DE_worm.html#Interpreting-Bayes-factors).
+ * The heatmap only shows metabolites which are **upregulated** in the 11-mix. 
+ 
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+bayes_test = function(df, group) {
+  df = as.data.frame(df)
+  bf = generalTestBF(value_log1p ~ group + experiment, data=df, neverExclude = "experiment", progress=FALSE)
+  data.frame(
+    bayes_factor = (bf[1] / bf[2]) %>% as.vector(),
+    log2_fc = log2(mean(df$value[df$group == "11-mix"], na.rm=FALSE) /mean(df$value[df$group == "10-mix"], na.rm=FALSE))
+  )
+}
+
+data4_res = data4_filtered %>% 
+  mutate(experiment = as.factor(experiment)) %>%
+  group_by(metabolite) %>% 
+  group_modify(bayes_test) %>%
+  ungroup() %>% 
+  mutate(log_bf = log(bayes_factor)) %>% 
+  arrange(-bayes_factor) 
+
+data4_res %>% 
+  write_tsv("../../data/21_de_metabolites/q4_11mix_vs_10mix_serum.tsv")
+
+```
+
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE}
+selected_metabolites4 = data4_res %>%
+  filter(bayes_factor > 3, log2_fc > 0) %>%
+  mutate(bayes_cat = categorize_bayes_factor(bayes_factor))
+
+heatmap_data = all_data %>%
+  filter(experiment %in% c("exp2", "exp3"), source == "serum") %>% 
+  inner_join(selected_metabolites4) %>%
+  arrange(-bayes_factor) %>% 
+  mutate(value_log = ifelse(is.infinite(value_log), NA, value_log)) %>%
+  group_by(metabolite) %>% 
+  mutate(value_scaled = scale(value_log)[,1])
+
+heatmap_data %>% 
+  group_by(bayes_cat, group) %>% 
+  heatmap(metabolite, sample, value_scaled, 
+          cluster_rows=FALSE,
+          palette_value = circlize::colorRamp2(c(-2, 0, 2), brewer.pal(n=5, name="RdBu")[c(5,3,1)]),
+          palette_grouping = list(brewer.pal(n=5, name="YlOrBr")[5:3]),
+          row_names_gp = grid::gpar(fontsize = 8),
+          column_names_gp = grid::gpar(fontsize=10)
+) %>%
+  add_tile(group, palette =brewer.pal(n=3, name="Set1")[1:2]) %>% 
+  add_tile(experiment, palette=brewer.pal(n=3, name="Dark2"))
+  
+```
+
+## Question5: 11 strains vs GF in serum (experiments 2 + 3)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data5 = all_data %>% filter(experiment %in% c("exp2", "exp3"), source=="serum", group %in% c("11-mix", "GF"))
+
+# 4 = at least half in each group
+metabolites_filtered = data5 %>% group_by(metabolite) %>% summarise(n_measured = sum(value > 0)) %>% filter(n_measured>=4)
+
+data5_filtered = data5 %>% 
+  inner_join(metabolites_filtered) %>% 
+  mutate(value_log1p = log1p(value))
+
+data5_filtered %>% 
+  ggplot(aes(x=sample, y=value_log1p, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log1p")
+
+data5_filtered %>% 
+  ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+### statistical test using linear model
+
+ * A Bayesian linear model, comparing the model ` ~ experiment + group` against `~ experiment` only. 
+ * For interpretation of (log) bayes factors, see, for instance [here](https://docs.scvi-tools.org/en/stable/user_guide/notebooks/scVI_DE_worm.html#Interpreting-Bayes-factors).
+ * The heatmap only shows metabolites which are **upregulated** in the 11-mix. 
+ 
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+bayes_test = function(df, group) {
+  df = as.data.frame(df)
+  bf = generalTestBF(value_log1p ~ group + experiment, data=df, neverExclude = "experiment", progress=FALSE)
+  data.frame(
+    bayes_factor = (bf[1] / bf[2]) %>% as.vector(),
+    log2_fc = log2(mean(df$value[df$group == "11-mix"], na.rm=FALSE) /mean(df$value[df$group == "GF"], na.rm=FALSE))
+  )
+}
+
+data5_res = data5_filtered %>% 
+  mutate(experiment = as.factor(experiment)) %>%
+  group_by(metabolite) %>% 
+  group_modify(bayes_test) %>%
+  ungroup() %>% 
+  mutate(log_bf = log(bayes_factor)) %>% 
+  arrange(-bayes_factor) 
+
+data5_res %>% 
+  write_tsv("../../data/21_de_metabolites/q5_11mix_vs_GF_serum_exp2_exp3.tsv")
+
+```
+
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE}
+selected_metabolites5 = data5_res %>%
+  filter(bayes_factor > 3, log2_fc > 0) %>%
+  mutate(bayes_cat = categorize_bayes_factor(bayes_factor))
+
+heatmap_data = all_data %>%
+  filter(experiment %in% c("exp2", "exp3"), source == "serum") %>% 
+  inner_join(selected_metabolites5) %>%
+  arrange(-bayes_factor) %>% 
+  mutate(value_log = ifelse(is.infinite(value_log), NA, value_log)) %>%
+  group_by(metabolite) %>% 
+  mutate(value_scaled = scale(value_log)[,1])
+
+heatmap_data %>% 
+  group_by(bayes_cat, group) %>% 
+  heatmap(metabolite, sample, value_scaled, 
+          cluster_rows=FALSE,
+          palette_value = circlize::colorRamp2(c(-2, 0, 2), brewer.pal(n=5, name="RdBu")[c(5,3,1)]),
+          palette_grouping = list(brewer.pal(n=5, name="YlOrBr")[5:3]),
+          row_names_gp = grid::gpar(fontsize = 8),
+          column_names_gp = grid::gpar(fontsize=10)
+) %>%
+  add_tile(group, palette =brewer.pal(n=3, name="Set1")[1:2]) %>% 
+  add_tile(experiment, palette=brewer.pal(n=3, name="Dark2"))
+  
+```
+
+## Question6: 11 strains vs GF in serum (experiments 4 + 5)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+data6 = all_data %>% filter(experiment %in% c("exp4_anion","exp4_cation", "exp5"), source=="serum", group %in% c("11-mix", "GF"))
+
+# 4 = at least half in each group
+metabolites_filtered = data6 %>% group_by(metabolite) %>% summarise(n_measured = sum(value > 0)) %>% filter(n_measured>=4)
+
+data6_filtered = data6 %>% 
+  inner_join(metabolites_filtered) %>% 
+  mutate(value_log1p = log1p(value))
+
+data6_filtered %>% 
+  ggplot(aes(x=sample, y=value_log1p, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log1p")
+
+data6_filtered %>% 
+  ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+### statistical test using linear model
+
+ * A Bayesian linear model, comparing the model ` ~ experiment + group` against `~ experiment` only. 
+ * For interpretation of (log) bayes factors, see, for instance [here](https://docs.scvi-tools.org/en/stable/user_guide/notebooks/scVI_DE_worm.html#Interpreting-Bayes-factors).
+ * The heatmap only shows metabolites which are **upregulated** in the 11-mix. 
+ 
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+bayes_test = function(df, group) {
+  df = as.data.frame(df)
+  bf = generalTestBF(value_log1p ~ group + experiment, data=df, neverExclude = "experiment", progress=FALSE)
+  data.frame(
+    bayes_factor = (bf[1] / bf[2]) %>% as.vector(),
+    log2_fc = log2(mean(df$value[df$group == "11-mix"], na.rm=FALSE) /mean(df$value[df$group == "GF"], na.rm=FALSE))
+  )
+}
+
+data6_res = data6_filtered %>% 
+  mutate(experiment = as.factor(experiment)) %>%
+  group_by(metabolite) %>% 
+  group_modify(bayes_test) %>%
+  ungroup() %>% 
+  mutate(log_bf = log(bayes_factor)) %>% 
+  arrange(-bayes_factor) 
+
+data6_res %>% 
+  write_tsv("../../data/21_de_metabolites/q6_11mix_vs_GF_serum_exp4_exp5.tsv")
+
+```
+
+```{r, fig.width=10, fig.height=10, echo=FALSE, message=FALSE, warning=FALSE}
+selected_metabolites6 = data6_res %>%
+  filter(bayes_factor > 3, log2_fc > 0) %>%
+  mutate(bayes_cat = categorize_bayes_factor(bayes_factor))
+
+heatmap_data = all_data %>%
+  filter(experiment %in% c("exp5", "exp4_anion","exp4_cation"), source == "serum") %>% 
+  inner_join(selected_metabolites6) %>%
+  arrange(-bayes_factor) %>% 
+  mutate(value_log = ifelse(is.infinite(value_log), NA, value_log)) %>%
+  group_by(metabolite) %>% 
+  mutate(value_scaled = scale(value_log)[,1])
+
+heatmap_data %>% 
+  group_by(bayes_cat, group) %>% 
+  heatmap(metabolite, sample, value_scaled, 
+          cluster_rows=FALSE,
+          cluster_columns=FALSE,
+          palette_value = circlize::colorRamp2(c(-2, 0, 2), brewer.pal(n=5, name="RdBu")[c(5,3,1)]),
+          palette_grouping = list(brewer.pal(n=5, name="YlOrBr")[5:3]),
+          row_names_gp = grid::gpar(fontsize = 8),
+          column_names_gp = grid::gpar(fontsize=10)
+) %>%
+  add_tile(group, palette =brewer.pal(n=3, name="Set1")[1:2]) %>% 
+  add_tile(experiment, palette=brewer.pal(n=3, name="Dark2"))
+  
+```
+
+## Normalization to get approximate absolute concentrations
+
+> I have discussed with Dr. Yuki Sugiura for this.
+Actually he has not used a stable isotope-labeled internal standard for these data set.
+But he has measured standard mevalonate in parallel of measuring cecal/serum samples, so we could roughly calculate the concentration from the value of peak area.
+In each experiment, the concentrations of cecal mevalonate are around 10 nM level in germ-free group and 100 nM level in 11-mix group.
+(We roughly set that the one gram weight of cecal content is equal to 1mL volume)
+
+```{r}
+data_pre_norm = all_data %>% filter(group %in% c("GF", "11-mix"), source == "cecal")
+
+data_pre_norm %>% ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+```{r}
+data_norm = data_pre_norm %>%
+  select(-value_log) %>% 
+  group_by(sample) %>% 
+  group_modify(function(group_df, group) {
+    # normalize such that mevalonate = 10 or 100 nM, respectively
+    target_concentration = if_else(group_df$group[1] == "GF", 10, 100)
+    scaling_factor = target_concentration / (group_df %>% filter(metabolite == "AM002 Mevalonate") %>% pull("value"))
+    group_df$value = group_df$value * scaling_factor
+    group_df
+  }) %>%
+  ungroup() %>%
+  mutate(value_log = log10(value))
+
+data_norm %>% ggplot(aes(x=sample, y=value_log, fill=paste0(experiment, "_", group))) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ggtitle("log10 (excluding NAs)")
+```
+
+
+```{r}
+sem = function(x) {sd(x, na.rm=TRUE) / sqrt(sum(!is.na(x)))}
+
+data_norm_summary = data_norm %>% group_by(group, metabolite) %>% 
+  summarise(`mean [nM]`=mean(value, na.rm=TRUE), `median [nM]`=median(value, na.rm=TRUE), sem=sem(value))
+
+data_norm_summary %>% write_tsv("../../data/21_de_metabolites/data_norm_summary.tsv")
+
+```
