@@ -1,7 +1,7 @@
 20_scripts/10_butyrate_pilot/
 20_scripts/20_metabolites_honda/
 20_scripts/30_bacterial_supernatant/gregor_previous_work/
-*.ipynb_checkpoints
+.ipynb_checkpoints
 **/*.err
 *.pyc
 *.pyc
