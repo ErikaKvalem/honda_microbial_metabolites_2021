@@ -1,0 +1,26 @@
+name: scvelo_23
+channels:
+    - conda-forge
+    - bioconda
+    - defaults
+dependencies:
+    - python=3.9
+    - anndata
+    - ipykernel
+    - cellrank
+    - pip
+    - h5py
+    - click
+    - cython
+    - numba
+    - scvelo
+    - scanpy
+    - numpy
+    - scipy
+    - pandas
+    - scikit-learn
+    - matplotlib
+    - kallisto
+    - pip:
+        - velocyto
+prefix: ~/.conda/envs/scvelo

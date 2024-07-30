@@ -1,0 +1,14 @@
+# Conda environment for python scRNAseq data analysis
+name: 2023-crca-scvi-tools
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy=1.23
+  - scanpy
+  - chex=0.1.6 # see https://github.com/google/jax/issues/10331
+  - pytorch-gpu
+  - scvi-tools
+
