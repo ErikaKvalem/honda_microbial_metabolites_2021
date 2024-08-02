@@ -50,7 +50,7 @@ desired_order <- c("MPEC_Progenitor", "MPEC_Intermediate", "MPEC_Effector",
 df_num$cell_type <- factor(df_num$cell_type, levels = desired_order)
 
 # Remove rows where condition is "GF"
-df_num<- df_num[df_num$condition != "GF", ]
+#df_num<- df_num[df_num$condition != "GF", ]
 
 
 p2_results = compare_means(cell_fraction ~ condition, data = df_num, 
@@ -66,7 +66,7 @@ p2 <- ggboxplot(df_num, x = "cell_type", y = "cell_fraction",
                facet.by = "condition", short.panel.labs = FALSE)+  rotate_x_text(angle = 45) + 
   facet_wrap(~ condition, labeller = as_labeller(setNames(facet_labels, unique(df_num$condition)))) +
   theme(legend.position = "none") + # Remove legend
-  ylab("Cell fraction")  # Set y-axis label
+  ylab("Cell fraction")  + # Set y-axis label
 xlab("Cell type")
 
 p2 
