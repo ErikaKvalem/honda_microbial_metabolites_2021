@@ -1,8 +1,11 @@
+library(readr)
+
+
 ############ Compositional analysis for TIL Honda project 
+path="/data/scratch/kvalem/projects/2021/honda_microbial_metabolites_2021/40_tables/40_single-cell-sorted-cd8/40_gex_surface_prot/"
+plot_df_inf = read_csv(paste0(path,"plot_df_INF.csv"))
 
-plot_df_inf = read_csv("plot_df_INF.csv")
-
-frac_by_condition_inf <- read_csv("frac_by_condition_INF.csv")
+frac_by_condition_inf <- read_csv(paste0(path,"frac_by_condition_INF.csv"))
 
 plot_df= read_csv("plot_df.csv")
 colnames(plot_df)[colnames(plot_df) == 'Cell type'] <- 'cell_type'
