@@ -6,7 +6,7 @@ library(tidyr)
 library(ggpubr)
 library(rstatix)
 library("biomaRt")
-install.packages("ggsignif")
+
 
 
 library(dplyr)
@@ -14,7 +14,7 @@ library(dplyr)
 path="/data/scratch/kvalem/projects/2021/honda_microbial_metabolites_2021/40_tables/40_single-cell-sorted-cd8/40_gex_surface_prot/"
 log1p_norm_counts = read.table(paste0(path,"log1p_norm_counts_ps.csv"),sep= ",", header=TRUE, row.names=1)
 samplesheet = read_csv(paste0(path,"samplesheet_ps.csv"))
-counts = read.table(paste0(path,"counts_ps.csv"),sep= ",", header=TRUE, row.names=1)
+#counts = read.table(paste0(path,"counts_ps.csv"),sep= ",", header=TRUE, row.names=1)
 counts <- log1p_norm_counts
 #colnames(counts) <- sub("^.", "", colnames(counts))
 colnames(counts) <- sub("^X", "", colnames(counts))
@@ -43,8 +43,8 @@ counts <- merge(counts, gene_symbols, by.x = "gene_id", by.y = "gene_id", all.x 
 df_nc <- as.data.frame(counts)
 
 # List of gene names
-index_list <- head(counts$gene_id,8)
-index_list_name <- head(counts$gene_name,8)
+
+index_list_name <- c("Ifng","Gnai3")
 
 # Initialize an empty dataframe to store the result
 result <- data.frame()
@@ -52,11 +52,10 @@ result <- data.frame()
 p_values_df <- data.frame(gene_name = character(), p_val = numeric())
 
 # Iterate over each gene name in index_list
-for (i in seq_along(index_list)) {
-  i =1
+for (i in seq_along(index_list_name)) {
   # Filter dataframe based on gene name
-  #df_nc_filtered <- df_nc[index_list[i], ]
-  df_nc_filtered <- df_nc[df_nc$gene_id == index_list[i], ]
+  i=1
+  df_nc_filtered <- df_nc[df_nc$gene_name == index_list_name[i], ]
   
   # Transpose the filtered dataframe
   df_t <- t(df_nc_filtered)
@@ -72,6 +71,7 @@ for (i in seq_along(index_list)) {
   
   # Optionally, remove the 'id' column from the dataframe if you no longer need it as a separate column
   df_t$id <- NULL
+  df_t <- subset(df_t, rownames(df_t) != "gene_name")
   
   ####
   
@@ -82,7 +82,7 @@ for (i in seq_along(index_list)) {
   df_t$log1p_norm <- scale(df_t$log1p_norm, center = TRUE, scale = TRUE)
   
   # Apply the log(x + 1) transformation
-  df_t$log1p_norm <- log1p(df_t$log1p_norm)
+  #df_t$log1p_norm <- log1p(df_t$log1p_norm)
   
   # Add 'gene_name' column
   df_t$gene_id <- as.character(index_list[i])
@@ -108,18 +108,12 @@ for (i in seq_along(index_list)) {
   colnames(result)[2] <- "log1p_norm"
   
 }
-# Extract adjusted p-values
-test_results$p.adj <- adj_pvalues(ihw_result)
-stat.test <- test_results |> add_significance("p", cutpoints = c(0, 1e-04, 0.001, 0.01, 0.1, 1),
-                                              symbols = c("****", "***", "**", "*", "ns"))
 
-stat.test$p.scient <- format(stat.test$p.adj, scientific = TRUE, digits = 3)
 
-stat.test <- stat.test %>% add_xy_position(x = "sex")
-stat.test.normal <- stat.test
 result <- result[!is.na(result$condition), ]
-p  <-  ggviolin(result, x = "condition", y = "log1p_norm", trim=FALSE, title="Top 20 Normal DE genes corrected") +  
+p  <-  ggviolin(result, x = "condition", y = "log1p_norm", trim=FALSE, title="Gene expression") +  
   facet_wrap(~ gene_name) 
+
 
 
 max_y <- max(result$log1p_norm, na.rm = TRUE)
