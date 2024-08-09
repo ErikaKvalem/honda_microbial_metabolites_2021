@@ -13,7 +13,11 @@ library(dplyr)
 # #####################
 path="/data/scratch/kvalem/projects/2021/honda_microbial_metabolites_2021/40_tables/40_single-cell-sorted-cd8/40_gex_surface_prot/"
 log1p_norm_counts = read.table(paste0(path,"log1p_norm_counts.csv"),sep= ",", header=TRUE, row.names=1)
-samplesheet = read_csv(paste0(path,"samplesheet_ps.csv"))
+#library(data.table) 
+#log1p_norm_counts <- fread(paste0(path,"log1p_norm_counts.csv"))
+samplesheet = read_csv(paste0(path,"samplesheet.csv"))
+samplesheet$sample_id <- gsub("-", "_", samplesheet$sample_id)
+
 counts <- log1p_norm_counts
 
 colnames(counts) <- sub("^X", "", colnames(counts))
@@ -86,6 +90,8 @@ baseline_df <- subset(df_t, condition == "10mix")
 
 # Filter for female
 perturbation_df <- subset(df_t, condition == "11mix")
+
+
 
 # Append the result
 result <- rbind(result, df_t)
