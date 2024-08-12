@@ -16,7 +16,7 @@ log1p_norm_counts = read.table(paste0(path,"log1p_norm_counts.csv"),sep= ",", he
 #library(data.table) 
 #log1p_norm_counts <- fread(paste0(path,"log1p_norm_counts.csv"))
 samplesheet = read_csv(paste0(path,"samplesheet.csv"))
-samplesheet$sample_id <- gsub("-", "_", samplesheet$sample_id)
+#samplesheet$sample_id <- gsub("-", "_", samplesheet$sample_id)
 
 counts <- log1p_norm_counts
 
@@ -46,7 +46,7 @@ counts <- merge(counts, gene_symbols, by.x = "gene_id", by.y = "gene_id", all.x 
 df_nc <- as.data.frame(counts)
 
 # List of gene names
-gene_name_value = "Ifng"
+gene_name_value = "Cxcr3"
 gene_id_value <- df_nc %>% 
   filter(gene_name == gene_name_value) %>% 
   pull(gene_id)
@@ -82,9 +82,13 @@ df_t$log1p_norm <- as.numeric(df_t$log1p_norm)
 # Add 'gene_name' column
 df_t$gene_id <- as.character(gene_id_value)
 df_t$gene_name <- as.character(gene_name_value)
-df_t$sample_id<- rownames(df_t)
+df_t$sample_ID<- rownames(df_t)
 
-df_t <- merge(df_t, samplesheet[, c("sample_id", "condition", "cell_type")], by = "sample_id")
+samplesheet$sample_ID <- gsub("-", "_", samplesheet$index)
+
+
+
+df_t <- merge(df_t, samplesheet[, c("sample_ID", "condition", "cell_type")], by = "sample_ID")
 # Filter for male
 baseline_df <- subset(df_t, condition == "10mix")
 
@@ -100,16 +104,15 @@ colnames(result)[2] <- "log1p_norm"
 
 result <- result[!is.na(result$condition), ]
 p  <-  ggviolin(result, x = "condition", y = "log1p_norm", color="condition", trim=FALSE, title=paste0(gene_name_value, " gene expression")) +  
-  facet_wrap(~ gene_name) 
-
+  facet_wrap(~ cell_type) 
 
 max_y <- max(result$log1p_norm, na.rm = TRUE)
 
 p <- p + geom_signif(
-  comparisons = list(c("10mix", "11mix"), c("11mix", "GF")),
+  comparisons = list(c("10mix", "11mix"), c("11mix", "GF"), c("10mix","GF")),
   map_signif_level = TRUE,
   test = "t.test",
-  y_position = c(8.3, 9.0),  # Different heights for each comparison
+  y_position = c(5.3, 6.0,7.0),  # Different heights for each comparison
   tip_length = 0, 
   vjust = 0.2
 ) + 
