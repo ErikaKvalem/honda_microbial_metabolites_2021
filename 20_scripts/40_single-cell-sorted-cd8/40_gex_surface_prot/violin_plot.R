@@ -46,7 +46,7 @@ counts <- merge(counts, gene_symbols, by.x = "gene_id", by.y = "gene_id", all.x 
 df_nc <- as.data.frame(counts)
 
 # List of gene names
-gene_name_value = "Cxcr3"
+gene_name_value = "Ifng"
 gene_id_value <- df_nc %>% 
   filter(gene_name == gene_name_value) %>% 
   pull(gene_id)
@@ -96,25 +96,33 @@ baseline_df <- subset(df_t, condition == "10mix")
 perturbation_df <- subset(df_t, condition == "11mix")
 
 
-
+desired_order <- c("10mix", "11mix","GF", "GF-plus")
+facet_labels <- c("COLON_Naive","COLON_Intermediate","COLON_Infg","COLON_Exhausted","MPEC_Effector" ,
+                  "MPEC_Intermediate",  "MPEC_Progenitor",  "SLEC_Progenitor" , "SLEC_Plastic"
+                  , "SLEC_Intermediate", "SLEC_Effector","SLEC_Inf" ,"SLEC_Terminal"  )
 # Append the result
 result <- rbind(result, df_t)
 colnames(result)[2] <- "log1p_norm"
   
 
 result <- result[!is.na(result$condition), ]
+result$"condition" <- factor(result$"condition", levels = desired_order)
 p  <-  ggviolin(result, x = "condition", y = "log1p_norm", color="condition", trim=FALSE, title=paste0(gene_name_value, " gene expression")) +  
-  facet_wrap(~ cell_type) 
+  #facet_wrap(~ cell_type) 
+  facet_wrap(~ cell_type, labeller = as_labeller(setNames(facet_labels, unique(result$cell_type)))) 
 
 max_y <- max(result$log1p_norm, na.rm = TRUE)
 
 p <- p + geom_signif(
-  comparisons = list(c("10mix", "11mix"), c("11mix", "GF"), c("10mix","GF")),
+  comparisons = list(c("10mix", "11mix"), c("11mix", "GF"), c("10mix","GF"),  c("GF-plus","GF")),
   map_signif_level = TRUE,
-  test = "t.test",
-  y_position = c(5.3, 6.0,7.0),  # Different heights for each comparison
+  test = "wilcox.test",
+  y_position = c(5, 6.0,6.5,7.5),  # Different heights for each comparison
   tip_length = 0, 
   vjust = 0.2
-) + 
-  geom_jitter(shape=16, position=position_jitter(0.2))
+) + ylim(0, 8)
+  #geom_jitter(shape=16, position=position_jitter(0.2)) + ylim(0, 8) 
 p
+path_figures = "/data/scratch/kvalem/projects/2021/honda_microbial_metabolites_2021/20_scripts/40_single-cell-sorted-cd8/40_gex_surface_prot/figures/"
+
+ggsave(paste0(path_figures,"gene_expression.png"), p, width =16, height = 14)
