@@ -46,7 +46,7 @@ counts <- merge(counts, gene_symbols, by.x = "gene_id", by.y = "gene_id", all.x 
 df_nc <- as.data.frame(counts)
 
 # List of gene names
-gene_name_value = "Ifng"
+gene_name_value = "Cxcr3"
 gene_id_value <- df_nc %>% 
   filter(gene_name == gene_name_value) %>% 
   pull(gene_id)
