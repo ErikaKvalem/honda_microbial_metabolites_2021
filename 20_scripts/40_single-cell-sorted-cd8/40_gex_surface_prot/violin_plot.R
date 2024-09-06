@@ -6,6 +6,8 @@ library(tidyr)
 library(ggpubr)
 library(rstatix)
 library("biomaRt")
+conflicts_prefer(stats::filter)
+conflicts_prefer(dplyr::rename)
 
 
 
@@ -44,11 +46,17 @@ counts <- merge(counts, gene_symbols, by.x = "gene_id", by.y = "gene_id", all.x 
 ###################################
 # Convert log1p_norm_counts to dataframe
 df_nc <- as.data.frame(counts)
+library(dplyr)
+
+# Assuming your data frame is called df
+df_nc <- df_nc %>%
+  select(-gene_name.y) %>%  # Remove the gene_name.y column
+  rename(gene_name = gene_name.x)  # Rename gene_name.x to gene_name
 
 # List of gene names
 gene_name_value = "Cxcr3"
 gene_id_value <- df_nc %>% 
-  filter(gene_name == gene_name_value) %>% 
+  filter(gene_name.x == gene_name_value) %>% 
   pull(gene_id)
 
 
