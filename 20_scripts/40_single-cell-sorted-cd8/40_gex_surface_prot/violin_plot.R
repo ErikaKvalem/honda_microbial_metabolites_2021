@@ -6,17 +6,15 @@ library(tidyr)
 library(ggpubr)
 library(rstatix)
 library("biomaRt")
-conflicts_prefer(stats::filter)
-conflicts_prefer(dplyr::rename)
 
-
+conflicts_prefer(dplyr::setdiff)
 
 library(dplyr)
 # #####################
 path="/data/scratch/kvalem/projects/2021/honda_microbial_metabolites_2021/40_tables/40_single-cell-sorted-cd8/40_gex_surface_prot/"
-log1p_norm_counts = read.table(paste0(path,"log1p_norm_counts.csv"),sep= ",", header=TRUE, row.names=1)
+#log1p_norm_counts = read.table(paste0(path,"log1p_norm_counts.csv"),sep= ",", header=TRUE, row.names=1)
 #library(data.table) 
-#log1p_norm_counts <- fread(paste0(path,"log1p_norm_counts.csv"))
+log1p_norm_counts <- fread(paste0(path,"log1p_norm_counts.csv"))
 samplesheet = read_csv(paste0(path,"samplesheet.csv"))
 #samplesheet$sample_id <- gsub("-", "_", samplesheet$sample_id)
 
@@ -24,15 +22,15 @@ counts <- log1p_norm_counts
 
 colnames(counts) <- sub("^X", "", colnames(counts))
 
-counts$gene_id <- rownames(counts)
+#counts$gene_id <- rownames(counts)
 
 # Optionally, move "gene_id" to the first column
-counts <- counts[, c("gene_id", setdiff(names(counts), "gene_id"))]
+#counts <- counts[, c("gene_id", setdiff(names(counts), "gene_id"))]
 
 resDir = "/data/scratch/kvalem/projects/2021/honda_microbial_metabolites_2021/40_tables/40_single-cell-sorted-cd8/40_gex_surface_prot"
 
 ensembl <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
-ensembl_ids <- c(rownames(counts)) 
+ensembl_ids <- c(counts$ensembl_id) 
 gene_symbols <- getBM(attributes = c("ensembl_gene_id", "external_gene_name"),
                       filters = "ensembl_gene_id",
                       values = ensembl_ids,
@@ -46,17 +44,11 @@ counts <- merge(counts, gene_symbols, by.x = "gene_id", by.y = "gene_id", all.x 
 ###################################
 # Convert log1p_norm_counts to dataframe
 df_nc <- as.data.frame(counts)
-library(dplyr)
-
-# Assuming your data frame is called df
-df_nc <- df_nc %>%
-  select(-gene_name.y) %>%  # Remove the gene_name.y column
-  rename(gene_name = gene_name.x)  # Rename gene_name.x to gene_name
 
 # List of gene names
 gene_name_value = "Cxcr3"
 gene_id_value <- df_nc %>% 
-  filter(gene_name.x == gene_name_value) %>% 
+  filter(gene_name == "Cxcr3") %>% 
   pull(gene_id)
 
 
