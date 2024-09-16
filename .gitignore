@@ -12,8 +12,8 @@ __pycache__
 tmp/
 work/
 .DS_Store
-.out
+*.out
 40_tables
-.err
+*.err
 figures
-.h5ad
+*.h5ad
