@@ -78,6 +78,7 @@ conflict_prefer("paste", "base")
 conflict_prefer("rename", "dplyr")
 remove_ensg_version = function(x) gsub("\\.[0-9]*$", "", x)
 
+
 #### Get parameters from docopt
 
 # Input and output
@@ -122,46 +123,49 @@ save_ws = arguments$save_workspace
 save_init_ws = arguments$save_init_workspace
 save_sessioninfo = arguments$save_sessioninfo
 
-if (organism == "human") {
-    anno_db = "org.Hs.eg.db"
-    org_kegg = "hsa"
-    org_reactome = "human"
-    org_wp = "Homo sapiens"
-} else if (organism == "mouse") {
-    anno_db = "org.Mm.eg.db"
-    org_kegg = "mmu"
-    org_reactome = "mouse"
-    org_wp = "Mus musculus"
-} else {
-    msg <- paste0("Organism not implemented: ", organism)
-    stop(msg)
-}
-library(anno_db, character.only = TRUE)
+
 
 # Testdata
 # Example1
-# sampleAnnotationCSV = "/data/projects/2021/MicrobialMetabolites/bacterial-supernatant/10_rnaseq_pipeline/pipeline_info/samplesheet_no_mHCO4_organoid.valid.csv"
-# readCountFile = "/data/projects/2021/MicrobialMetabolites/bacterial-supernatant/10_rnaseq_pipeline/star_salmon/salmon.merged.gene_counts.tsv"
-# results_dir = "/data/projects/2021/MicrobialMetabolites/bacterial-supernatant/20_deseq2icbi/debug"
-# paired_grp = NULL
-# prefix = "example1"
-# plot_title = NULL
-# nfcore=FALSE
-# nfcore=TRUE
-# cond_col = "group"
-# sample_col = "sample"
-# contrast = c("group", "11mix", "10mix")
-# gene_id_type = "ENSEMBL"
-# covariate_formula = ""
-# fdr_cutoff = 0.1
-# fc_cutoff = 1
-# fc_cutoff = 0.585
-# gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
-# n_cpus = 1
-# n_cpus = 8
-# skip_gsea = FALSE
-# remove_batch_effect=FALSE#
-# organism="mouse"
+#sampleAnnotationCSV = "/data/projects/2021/MicrobialMetabolites/bacterial-supernatant/10_rnaseq_pipeline/pipeline_info/samplesheet_group_organoid.valid.csv"
+#readCountFile = "/data/projects/2021/MicrobialMetabolites/bacterial-supernatant/10_rnaseq_pipeline/star_salmon/salmon.merged.gene_counts.tsv"
+#results_dir = "/data/projects/2021/MicrobialMetabolites/bacterial-supernatant/20_deseq2icbi/paired_grp/deseq2_11mix_vs_10mix/redo_deseq2_11102024"
+#paired_grp = NULL
+#prefix = ""
+#plot_title = NULL
+#nfcore=FALSE
+#nfcore=TRUE
+#cond_col = "group"
+#sample_col = "sample"
+#contrast = c("group", "11mix", "10mix")
+#gene_id_type = "ENSEMBL"
+#covariate_formula = ""
+#fdr_cutoff = 0.1
+#fc_cutoff = 1
+#fc_cutoff = 0.585
+#gtf_file = "/data/genomes/hg38/annotation/gencode/gencode.v33.primary_assembly.annotation.gtf"
+#n_cpus = 1
+#n_cpus = 8
+#skip_gsea = FALSE
+#remove_batch_effect=TRUE#
+#batch_col="organoid"
+#organism="mouse"
+
+if (organism == "human") {
+  anno_db = "org.Hs.eg.db"
+  org_kegg = "hsa"
+  org_reactome = "human"
+  org_wp = "Homo sapiens"
+} else if (organism == "mouse") {
+  anno_db = "org.Mm.eg.db"
+  org_kegg = "mmu"
+  org_reactome = "mouse"
+  org_wp = "Mus musculus"
+} else {
+  msg <- paste0("Organism not implemented: ", organism)
+  stop(msg)
+}
+library(anno_db, character.only = TRUE)
 
 # sampleAnnotationCSV = "testdata/example1/sampleTableN.csv"
 # readCountFile = "testdata/example1/merged_gene_counts.txt"
@@ -342,7 +346,7 @@ write_tsv(gene_count, file.path(results_dir, paste0(prefix, "_number_of_detected
 # keep <- rowSums(counts(dds)) >= 10
 
 ## keep only genes where we have >= 10 reads per samplecondition in total
-keep <- rowSums(counts(dds) >= 5) >= 3
+keep <- rowSums(counts(dds) >= 5) >= 1
 #keep <- rowSums(counts(collapseReplicates(dds, dds[[cond_col]]))) >= 10
 dds <- dds[keep,]
 
@@ -768,7 +772,10 @@ if(!skip_gsea) {
   })
 }
 
-
+resIHW <- resIHW %>%
+  group_by(gene_name) %>%
+  slice_max(log2FoldChange, n = 1) %>%
+  ungroup()
 
 ########## Volcano plot
 p <- EnhancedVolcano(resIHW,
